@@ -1,0 +1,5 @@
+{
+  "name": "BidSmart AI",
+  "description": "End-to-end Agentic RFP Response System demonstrating RAG, multi-agent orchestration, and automated pricing.",
+  "requestFramePermissions": []
+}
