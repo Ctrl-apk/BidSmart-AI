@@ -14,6 +14,12 @@ export enum RFPStatus {
   FAILED = 'Failed',
 }
 
+export interface User {
+  name: string;
+  email: string;
+  role: string;
+}
+
 export interface RFP {
   id: string;
   title: string;
@@ -86,6 +92,7 @@ export interface FinalResponse {
   taxes: number;
   grandTotal: number;
   generatedAt: string;
+  currency: string;
 }
 
 export interface LogEntry {

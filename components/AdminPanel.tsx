@@ -1,6 +1,6 @@
 
 import React, { useRef, useState } from 'react';
-import { Upload, Database, Settings, Package, AlertCircle, FileSpreadsheet, Loader2, FileType } from 'lucide-react';
+import { Upload, Database, Settings, Package, AlertCircle, FileSpreadsheet, Loader2, FileType, Wand2 } from 'lucide-react';
 import { SKU } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 import * as XLSX from 'xlsx';
@@ -14,6 +14,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ skus, setSkus }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importStatus, setImportStatus] = useState<string>('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleStockUpdate = (id: string, newQty: number) => {
     setSkus(prev => prev.map(sku => sku.id === id ? { ...sku, stockQty: newQty } : sku));
@@ -32,6 +33,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ skus, setSkus }) => {
       };
       reader.onerror = error => reject(error);
     });
+  };
+
+  // Helper: Clean JSON string from Markdown code blocks
+  const cleanJsonString = (str: string) => {
+    return str.replace(/```json/g, '').replace(/```/g, '').trim();
   };
 
   // Handler for Excel/CSV using SheetJS
@@ -143,27 +149,116 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ skus, setSkus }) => {
     });
 
     if (!response.text) throw new Error("AI returned empty response");
-    const result = JSON.parse(response.text);
+    
+    let result;
+    try {
+        result = JSON.parse(cleanJsonString(response.text));
+    } catch (e) {
+        throw new Error("Failed to parse AI response: " + e);
+    }
+    
+    if (!result || !Array.isArray(result.items)) {
+        console.warn("AI response did not contain items array:", result);
+        return [];
+    }
     
     return result.items.map((item: any, idx: number) => {
         // Convert specs array back to object Record<string, string|number>
         const specsObj: Record<string, string | number> = {};
         if (item.specs && Array.isArray(item.specs)) {
             item.specs.forEach((s: {key: string, value: string}) => {
-                // Try to parse number if it looks like one
-                const num = parseFloat(s.value);
-                specsObj[s.key] = isNaN(num) ? s.value : num;
+                if (s.key && s.value) {
+                    // Try to parse number if it looks like one
+                    const num = parseFloat(s.value);
+                    specsObj[s.key] = isNaN(num) ? s.value : num;
+                }
             });
         }
 
         return {
             ...item,
             id: `sku-imp-ai-${Date.now()}-${idx}`,
+            modelName: item.modelName || 'Unknown Item',
+            manufacturer: item.manufacturer || 'Unknown',
+            unitPrice: item.unitPrice || 0,
             stockQty: item.stockQty || 0, // Ensure defaults
             minStockThreshold: item.minStockThreshold || 5,
             specs: Object.keys(specsObj).length > 0 ? specsObj : { note: 'Extracted from PDF' }
         };
     });
+  };
+
+  const generateWithAI = async () => {
+      setIsGenerating(true);
+      try {
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || 'dummy' });
+          const prompt = `
+             Generate 10 realistic Industrial/Electrical inventory items (Transformers, Switchgears, Cables) for a demo database.
+             Include varying specifications (Voltage, kVA, Length).
+             Return JSON.
+          `;
+          
+          const response = await ai.models.generateContent({
+              model: 'gemini-2.5-flash',
+              contents: prompt,
+              config: {
+                  responseMimeType: 'application/json',
+                  responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        items: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    modelName: { type: Type.STRING },
+                                    manufacturer: { type: Type.STRING },
+                                    unitPrice: { type: Type.NUMBER },
+                                    stockQty: { type: Type.NUMBER },
+                                    specs: { 
+                                        type: Type.OBJECT, 
+                                        properties: {
+                                            kVA: { type: Type.NUMBER, nullable: true },
+                                            voltage: { type: Type.NUMBER, nullable: true },
+                                            cooling: { type: Type.STRING, nullable: true }
+                                        },
+                                        nullable: true 
+                                    }
+                                }
+                            }
+                        }
+                    }
+                  }
+              }
+          });
+
+          if(response.text) {
+              const cleanedText = cleanJsonString(response.text);
+              const data = JSON.parse(cleanedText);
+              
+              if (data.items && Array.isArray(data.items)) {
+                  const newSkus: SKU[] = data.items.map((item: any, idx: number) => ({
+                      id: `gen-${Date.now()}-${idx}`,
+                      modelName: item.modelName || 'Unknown Item',
+                      manufacturer: item.manufacturer || 'Generic',
+                      unitPrice: item.unitPrice || 0,
+                      stockQty: item.stockQty || 0,
+                      minStockThreshold: 5,
+                      specs: item.specs || {}
+                  }));
+                  setSkus(prev => [...prev, ...newSkus]);
+                  alert(`Success! Generated ${newSkus.length} new items.`);
+              } else {
+                  throw new Error("Invalid structure returned by AI");
+              }
+          }
+
+      } catch(e) {
+          console.error(e);
+          alert("Generation failed: " + e);
+      } finally {
+          setIsGenerating(false);
+      }
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -208,9 +303,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ skus, setSkus }) => {
 
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-800">System Administration</h2>
-        <p className="text-slate-500">Configure agents, manage inventory, and set pricing logic.</p>
+      <div className="flex justify-between items-center">
+        <div>
+            <h2 className="text-2xl font-bold text-slate-800">System Administration</h2>
+            <p className="text-slate-500">Configure agents, manage inventory, and set pricing logic.</p>
+        </div>
+        <button 
+            onClick={generateWithAI}
+            disabled={isGenerating}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 shadow-sm disabled:opacity-50"
+        >
+            {isGenerating ? <Loader2 className="animate-spin" size={16} /> : <Wand2 size={16} />}
+            {isGenerating ? 'Generating...' : 'Auto-Generate Data'}
+        </button>
       </div>
 
       {/* Inventory Management Section */}
@@ -224,56 +329,63 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ skus, setSkus }) => {
             </span>
         </div>
         
-        <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-            <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200 sticky top-0 bg-slate-50 z-10">
-                    <tr>
-                        <th className="p-4">SKU / Model</th>
-                        <th className="p-4">Manufacturer</th>
-                        <th className="p-4 text-center">Unit Price</th>
-                        <th className="p-4 text-center">Stock Level</th>
-                        <th className="p-4 text-center">Status</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                    {skus.map(sku => {
-                        const isLowStock = sku.stockQty <= sku.minStockThreshold;
-                        return (
-                            <tr key={sku.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="p-4">
-                                    <div className="font-medium text-slate-900">{sku.modelName}</div>
-                                    <div className="text-xs text-slate-400">ID: {sku.id}</div>
-                                </td>
-                                <td className="p-4 text-slate-600">{sku.manufacturer}</td>
-                                <td className="p-4 text-center">${sku.unitPrice.toLocaleString()}</td>
-                                <td className="p-4 text-center">
-                                    <div className="flex items-center justify-center gap-2">
-                                        <input 
-                                            type="number" 
-                                            value={sku.stockQty}
-                                            onChange={(e) => handleStockUpdate(sku.id, parseInt(e.target.value) || 0)}
-                                            className="w-16 border border-blue-200 bg-blue-50 rounded text-center py-1 px-1 focus:ring-2 focus:ring-blue-500 focus:outline-none text-slate-700 font-medium"
-                                        />
-                                        <span className="text-slate-400 text-xs">/ min {sku.minStockThreshold}</span>
-                                    </div>
-                                </td>
-                                <td className="p-4 text-center">
-                                    {isLowStock ? (
-                                        <span className="inline-flex items-center gap-1 text-red-600 bg-red-50 px-2 py-1 rounded text-xs font-bold">
-                                            <AlertCircle size={12} /> Low Stock
-                                        </span>
-                                    ) : (
-                                        <span className="text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold">
-                                            In Stock
-                                        </span>
-                                    )}
-                                </td>
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
-        </div>
+        {skus.length === 0 ? (
+            <div className="p-12 text-center">
+                <p className="text-slate-400 mb-2">Inventory is empty.</p>
+                <p className="text-slate-500 text-sm">Upload a file or use "Auto-Generate" to seed database.</p>
+            </div>
+        ) : (
+            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200 sticky top-0 bg-slate-50 z-10">
+                        <tr>
+                            <th className="p-4">SKU / Model</th>
+                            <th className="p-4">Manufacturer</th>
+                            <th className="p-4 text-center">Unit Price</th>
+                            <th className="p-4 text-center">Stock Level</th>
+                            <th className="p-4 text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {skus.map(sku => {
+                            const isLowStock = sku.stockQty <= sku.minStockThreshold;
+                            return (
+                                <tr key={sku.id} className="hover:bg-slate-50 transition-colors">
+                                    <td className="p-4">
+                                        <div className="font-medium text-slate-900">{sku.modelName}</div>
+                                        <div className="text-xs text-slate-400">ID: {sku.id}</div>
+                                    </td>
+                                    <td className="p-4 text-slate-600">{sku.manufacturer}</td>
+                                    <td className="p-4 text-center">₹{sku.unitPrice.toLocaleString()}</td>
+                                    <td className="p-4 text-center">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <input 
+                                                type="number" 
+                                                value={sku.stockQty}
+                                                onChange={(e) => handleStockUpdate(sku.id, parseInt(e.target.value) || 0)}
+                                                className="w-16 border border-blue-200 bg-blue-50 rounded text-center py-1 px-1 focus:ring-2 focus:ring-blue-500 focus:outline-none text-slate-700 font-medium"
+                                            />
+                                            <span className="text-slate-400 text-xs">/ min {sku.minStockThreshold}</span>
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        {isLowStock ? (
+                                            <span className="inline-flex items-center gap-1 text-red-600 bg-red-50 px-2 py-1 rounded text-xs font-bold">
+                                                <AlertCircle size={12} /> Low Stock
+                                            </span>
+                                        ) : (
+                                            <span className="text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold">
+                                                In Stock
+                                            </span>
+                                        )}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

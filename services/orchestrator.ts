@@ -31,12 +31,16 @@ export class Orchestrator {
   }
 
   // Helper to ensure AI calls don't hang forever
-  async withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  async withTimeout<T>(promise: Promise<T>, ms: number, fallback: T | null): Promise<T> {
     let timeoutId: any;
-    const timeoutPromise = new Promise<T>((resolve) => {
+    const timeoutPromise = new Promise<T>((resolve, reject) => {
       timeoutId = setTimeout(() => {
-        console.warn(`Operation timed out after ${ms}ms`);
-        resolve(fallback);
+        if (fallback !== null) {
+            console.warn(`Operation timed out after ${ms}ms, using fallback`);
+            resolve(fallback);
+        } else {
+            reject(new Error(`Operation timed out after ${ms}ms`));
+        }
       }, ms);
     });
 
@@ -47,8 +51,128 @@ export class Orchestrator {
     } catch (error) {
       console.error("Async operation failed:", error);
       clearTimeout(timeoutId);
-      return fallback;
+      throw error;
     }
+  }
+
+  // Internal helper for logic sharing between independent agents
+  // IMPLEMENTS TECHNICAL AGENT MATH RULES
+  private performMatching(products: ProductRequirement[], availableSkus: SKU[]): SKUMatch[] {
+    return products.map(prod => {
+      const scoredSkus = availableSkus.map(sku => {
+        let totalScore = 0;
+        let paramCount = 0;
+        const details: Record<string, number> = {};
+
+        // ----------------- PARAMETER MATCHING LOGIC -----------------
+        // Rules:
+        // 1. All parameters have equal weightage.
+        // 2. Missing parameters score = 0.
+        // 3. Normalized Math formulas for Numeric/Range/Categorical.
+
+        // SAFETY: Handle case where params might be null/undefined from extraction
+        const params = prod.params || {};
+
+        for (const [key, val] of Object.entries(params)) {
+            if (val === null || val === undefined || val === '') continue; 
+            paramCount++;
+            
+            const skuVal = sku.specs[key];
+            
+            // Rule: Missing parameters score = 0
+            if (skuVal === undefined || skuVal === null) {
+                details[key] = 0; 
+                continue;
+            }
+
+            let score = 0;
+
+            // ----------------- NORMALIZATION ------------------
+            const rfpValStr = String(val).trim().toLowerCase();
+            const skuValStr = String(skuVal).trim().toLowerCase();
+
+            // Check for Range in RFP value (e.g., "100-200")
+            const rangeMatch = rfpValStr.match(/^(\d+)-(\d+)$/);
+            
+            if (rangeMatch) {
+                // ---------------- RANGE SCORING -------------------------
+                // If RFP specifies range [L, U]:
+                // m_i = 1 if OEM_i in [L, U]
+                // else m_i = 1 − (distance_to_range / range_width)
+                
+                const min = parseFloat(rangeMatch[1]);
+                const max = parseFloat(rangeMatch[2]);
+                const skuNum = parseFloat(skuValStr);
+                
+                if (!isNaN(skuNum)) {
+                    if (skuNum >= min && skuNum <= max) {
+                        score = 1;
+                    } else {
+                        const dist = skuNum < min ? min - skuNum : skuNum - max;
+                        const rangeWidth = max - min || 1; // Avoid division by zero
+                        score = Math.max(0, 1 - (dist / rangeWidth));
+                    }
+                }
+            } else if (!isNaN(parseFloat(rfpValStr)) && !isNaN(parseFloat(skuValStr)) && isFinite(parseFloat(rfpValStr))) {
+                 // ---------------- NUMERIC CLOSENESS ----------------------
+                 // m_i = max(0, 1 − |OEM_i − RFP_i| / (RFP_i + ε))
+                 
+                 const rfpNum = parseFloat(rfpValStr);
+                 const skuNum = parseFloat(skuValStr);
+                 const epsilon = 0.00001; // Avoid division by zero
+                 
+                 const diff = Math.abs(skuNum - rfpNum);
+                 score = Math.max(0, 1 - (diff / (rfpNum + epsilon)));
+            } else {
+                // ---------------- EXACT MATCH SCORING -------------------
+                // For exact categorical matches: m_i = 1 if exact match else 0
+                // (Simulating semantic match > 0.8 with exact string check here)
+                score = rfpValStr === skuValStr ? 1 : 0;
+            }
+
+            details[key] = score;
+            totalScore += score;
+        }
+        
+        // ---------------- FINAL SPEC MATCH METRIC ---------------
+        // SpecMatch = (1/N) × Σ m_i × 100
+        if (paramCount === 0) {
+             return { sku, matchScore: 0, details: { 'error': 0 } };
+        }
+
+        const finalScore = (totalScore / paramCount) * 100;
+        return { sku, matchScore: finalScore, details };
+      });
+
+      // ---------------- TOP-3 SKU SELECTION -------------------
+      // Sort descending and choose Top-3
+      scoredSkus.sort((a, b) => b.matchScore - a.matchScore);
+      
+      const topMatch = scoredSkus[0];
+      
+      // Handle case where inventory is empty or no matches
+      if (!topMatch) {
+          return {
+              itemNo: prod.itemNo,
+              rfpParams: prod.params as Record<string, string|number>,
+              matches: [],
+              selectedSkuId: '',
+              isMTO: true,
+              requestedQty: prod.qty
+          };
+      }
+
+      const isMTO = topMatch.sku.stockQty < prod.qty;
+
+      return {
+        itemNo: prod.itemNo,
+        rfpParams: prod.params as Record<string, string|number>,
+        matches: scoredSkus.slice(0, 3), // Top 3
+        selectedSkuId: topMatch.sku.id,
+        isMTO,
+        requestedQty: prod.qty
+      };
+    });
   }
 
   // Step 1: Main Agent - Extraction
@@ -57,30 +181,6 @@ export class Orchestrator {
     await this.sleep(800);
     this.log(AgentRole.MAIN, 'Identifying key deliverables and technical standards...', 'info');
     
-    // Fallback data if AI fails
-    const fallbackData = {
-        products: [
-           {
-            itemNo: '1.01',
-            description: `Primary Equipment: ${rfp.title.replace('Supply of', '').trim()}`,
-            qty: 5,
-            unit: 'Nos',
-            params: { kVA: 1000, voltage: 11000, rating: 'Heavy Duty' }
-           },
-           {
-            itemNo: '1.02',
-            description: `Spares / Accessories`,
-            qty: 10,
-            unit: 'Set',
-            params: { type: 'Maintenance Kit' }
-           }
-        ],
-        tests: [
-            { id: 't-1', testName: 'Routine Acceptance Test', scope: 'IEC 60076', perUnit: true, perLot: false, remarks: 'Factory acceptance' },
-            { id: 't-2', testName: 'Type Test (Heat Run)', scope: 'IEC 60076-2', perUnit: false, perLot: true, remarks: 'One per lot' }
-        ]
-    };
-
     const aiCall = async () => {
         const responseSchema = {
             type: Type.OBJECT,
@@ -100,7 +200,9 @@ export class Orchestrator {
                          kVA: { type: Type.NUMBER, nullable: true },
                          voltage: { type: Type.NUMBER, nullable: true },
                          efficiency: { type: Type.NUMBER, nullable: true },
-                         cooling: { type: Type.STRING, nullable: true }
+                         cooling: { type: Type.STRING, nullable: true },
+                         frequency: { type: Type.NUMBER, nullable: true },
+                         phases: { type: Type.NUMBER, nullable: true }
                       },
                       nullable: true
                     }
@@ -127,9 +229,19 @@ export class Orchestrator {
           };
     
           const prompt = `
-            Extract 2-3 realistic product line items and 2 tests for a tender: "${rfp.title}".
-            Excerpt: "${rfp.excerpt}".
-            Return JSON.
+            Act as an expert technical presales engineer.
+            Analyze the following RFP information to extract product requirements and required tests.
+            
+            RFP Title: "${rfp.title}"
+            RFP Excerpt: "${rfp.excerpt}"
+            
+            CRITICAL INSTRUCTION:
+            The excerpt might be brief. If it lacks specific details, you MUST INFER and GENERATE plausible, industry-standard product line items and tests based on the RFP Title.
+            Do not return empty lists. Create a realistic demo scenario if needed.
+            
+            1. Extract/Infer 1-5 Product Items (Transformers, Cables, Switchgear, etc).
+            2. Extract/Infer 2-3 Standard Tests (Type Tests, Routine Tests).
+            3. Extract technical parameters (kV, kVA, Current, etc) into the 'params' object.
           `;
     
           const result = await this.ai.models.generateContent({
@@ -138,109 +250,88 @@ export class Orchestrator {
             config: {
               responseMimeType: "application/json",
               responseSchema: responseSchema,
-              temperature: 0.3
+              temperature: 0.1
             }
           });
           
-          if (!result.text) throw new Error("No text");
+          if (!result.text) throw new Error("No response from AI");
           const parsed = JSON.parse(result.text);
-          // Sanitize
-          const products = (parsed.products || []).map((p: any) => ({
-             ...p,
-             params: p.params || { note: 'Standard Spec' }
-          }));
-          const tests = parsed.tests || [];
-          if(products.length === 0) throw new Error("Empty products");
           
-          return { products, tests };
+          return { 
+              products: parsed.products || [], 
+              tests: parsed.tests || [] 
+          };
     };
 
-    // Race AI against 10s timeout
-    const extracted = await this.withTimeout(aiCall(), 10000, fallbackData);
-
-    this.log(AgentRole.MAIN, `Extraction success: Found ${extracted.products.length} items and ${extracted.tests.length} tests.`, 'success');
-    return extracted;
+    // Increased timeout to 60s to avoid timeouts
+    try {
+        const extracted = await this.withTimeout(aiCall(), 60000, null);
+        this.log(AgentRole.MAIN, `Extraction success: Found ${extracted.products.length} items and ${extracted.tests.length} tests.`, 'success');
+        return extracted;
+    } catch (e: any) {
+        this.log(AgentRole.MAIN, `Extraction Failed: ${e.message}`, 'error');
+        throw e;
+    }
   }
 
-  // Step 2: Technical Agent - SKU Matching
+  // Step 2: Technical Agent - SKU Matching (Independent)
   async runTechnicalMatching(products: ProductRequirement[], availableSkus: SKU[]): Promise<SKUMatch[]> {
-    this.log(AgentRole.TECHNICAL, `Ingesting ${products.length} line items from Main Agent...`, 'info');
-    await this.sleep(1200);
+    this.log(AgentRole.TECHNICAL, `Comparing extracted specs against ${availableSkus.length} OEM SKUs using vector logic...`, 'thinking');
+    await this.sleep(1500);
 
-    const matches: SKUMatch[] = products.map(prod => {
-      // Simulate analysis time
-      
-      const scoredSkus = availableSkus.map(sku => {
-        let totalScore = 0;
-        let paramCount = 0;
-        const details: Record<string, number> = {};
+    if (availableSkus.length === 0) {
+        this.log(AgentRole.TECHNICAL, `No Inventory Data Found! Please upload SKU data in Admin Panel.`, 'error');
+        return [];
+    }
 
-        for (const [key, val] of Object.entries(prod.params)) {
-            if (!val) continue; 
-            paramCount++;
-            const skuVal = sku.specs[key];
-            
-            if (skuVal === undefined) {
-                details[key] = 0; 
-                continue;
-            }
+    const matches = this.performMatching(products, availableSkus);
 
-            if (typeof val === 'number' && typeof skuVal === 'number') {
-                const diff = Math.abs(val - skuVal);
-                const divisor = val === 0 ? 1 : val;
-                const score = Math.max(0, 1 - (diff / divisor)); 
-                details[key] = score;
-                totalScore += score;
-            } else {
-                const score = String(val).toLowerCase() === String(skuVal).toLowerCase() ? 1 : 0;
-                details[key] = score;
-                totalScore += score;
-            }
+    matches.forEach(m => {
+        if (m.matches.length === 0) {
+            this.log(AgentRole.TECHNICAL, `No matching SKUs found for Item ${m.itemNo}`, 'warning');
+            return;
         }
         
-        if (paramCount === 0) {
-             const randomFactor = Math.random() * 0.4;
-             return { sku, matchScore: 50 + randomFactor * 30, details: { 'heuristic_match': 0.8 } };
+        const topMatch = m.matches[0];
+        if (m.isMTO) {
+          this.log(AgentRole.TECHNICAL, `Stock Alert: Best match "${topMatch.sku.modelName}" (SpecMatch: ${topMatch.matchScore.toFixed(1)}%) insufficient stock.`, 'warning');
+        } else {
+          this.log(AgentRole.TECHNICAL, `Selected "${topMatch.sku.modelName}" with SpecMatch: ${topMatch.matchScore.toFixed(1)}%`, 'success');
         }
-
-        const finalScore = paramCount > 0 ? (totalScore / paramCount) * 100 : 0;
-        return { sku, matchScore: finalScore, details };
-      });
-
-      scoredSkus.sort((a, b) => b.matchScore - a.matchScore);
-      const topMatch = scoredSkus[0];
-      
-      // Stock Validation Logic (MTO)
-      const isMTO = topMatch.sku.stockQty < prod.qty;
-
-      if (isMTO) {
-        this.log(AgentRole.TECHNICAL, `⚠️ STOCK ALERT: Item ${prod.itemNo} requires ${prod.qty} units, but best match "${topMatch.sku.modelName}" has only ${topMatch.sku.stockQty}. Internal msg: MTO made to order.`, 'warning');
-      } else {
-        this.log(AgentRole.TECHNICAL, `Matched Item "${prod.description.substring(0, 20)}..." to ${topMatch.sku.modelName} (${topMatch.matchScore.toFixed(0)}%) - In Stock.`, 'success');
-      }
-
-      return {
-        itemNo: prod.itemNo,
-        rfpParams: prod.params as Record<string, string|number>,
-        matches: scoredSkus.slice(0, 3), // Top 3
-        selectedSkuId: topMatch.sku.id,
-        isMTO,
-        requestedQty: prod.qty
-      };
     });
 
     return matches;
   }
 
-  // Step 3: Pricing Agent
-  async runPricing(matches: SKUMatch[], tests: TestRequirement[]): Promise<FinalResponse> {
-    this.log(AgentRole.PRICING, 'Applying logic: Cost + Logistics + Taxes...', 'thinking');
-    await this.sleep(1000);
+  // Step 3: Pricing Agent (Independent - Parallel)
+  async runPricing(products: ProductRequirement[], availableSkus: SKU[], tests: TestRequirement[], currency: string = 'USD'): Promise<FinalResponse> {
+    this.log(AgentRole.PRICING, `Initiating parallel market cost analysis & tax calculation in ${currency}...`, 'thinking');
+    await this.sleep(2000);
+
+    if (availableSkus.length === 0) {
+         this.log(AgentRole.PRICING, `Cannot calculate pricing: Inventory is empty.`, 'error');
+         throw new Error("Inventory Empty");
+    }
+
+    // Pricing Agent independently determines the SKU to price (typically the best match)
+    const matches = this.performMatching(products, availableSkus);
 
     let subtotal = 0;
     const pricingLines: PricingLine[] = matches.map(match => {
       const selected = match.matches.find(m => m.sku.id === match.selectedSkuId);
-      if (!selected) throw new Error("Selected SKU not found");
+      
+      if (!selected) {
+          return {
+              itemNo: match.itemNo,
+              skuModel: "NO MATCH FOUND",
+              unitPrice: 0,
+              qty: match.requestedQty || 0,
+              productTotal: 0,
+              testCosts: 0,
+              lineTotal: 0,
+              notes: "Requires Manual Sourcing"
+          };
+      }
       
       const qty = match.requestedQty || 1; 
       
@@ -279,7 +370,11 @@ export class Orchestrator {
     const taxes = (subtotal + logistics + contingency) * 0.10;
     const grandTotal = subtotal + logistics + contingency + taxes;
 
-    this.log(AgentRole.PRICING, `Total Estimated: $${grandTotal.toLocaleString()}`, 'success');
+    // Determine symbol for log
+    const symbols: Record<string, string> = { 'USD': '$', 'EUR': '€', 'GBP': '£', 'INR': '₹', 'JPY': '¥' };
+    const sym = symbols[currency] || '$';
+
+    this.log(AgentRole.PRICING, `Total Estimated: ${sym}${grandTotal.toLocaleString()}`, 'success');
 
     return {
       pricingTable: pricingLines,
@@ -288,7 +383,8 @@ export class Orchestrator {
       contingency,
       taxes,
       grandTotal,
-      generatedAt: new Date().toISOString()
+      generatedAt: new Date().toISOString(),
+      currency
     };
   }
 
