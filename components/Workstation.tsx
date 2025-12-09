@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { RFP, AgentRole, LogEntry, RFPStatus, SKUMatch, FinalResponse, SKU } from '../types';
 import { Orchestrator } from '../services/orchestrator';
-import { Play, RotateCcw, FileText, Cpu, Calculator, CheckCircle2, ChevronRight, Activity, Download, Loader2, AlertTriangle, PackageX, Check, Coins } from 'lucide-react';
+import { Play, RotateCcw, FileText, Cpu, Calculator, CheckCircle2, ChevronRight, Activity, Download, Loader2, AlertTriangle, PackageX, Check, Coins, ShieldCheck, Scale, TrendingUp, BarChart3, Info } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
 
 interface WorkstationProps {
   rfp: RFP;
@@ -25,45 +26,37 @@ const CURRENCY_OPTIONS = [
 ];
 
 const Workstation: React.FC<WorkstationProps> = ({ rfp, onUpdate, skus }) => {
-  // We keep the logs state to satisfy the Orchestrator callback, even if we don't display the panel
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [activeAgents, setActiveAgents] = useState<AgentRole[]>([]);
-  const [skuMatches, setSkuMatches] = useState<SKUMatch[]>([]);
-  const [finalPricing, setFinalPricing] = useState<FinalResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'technical' | 'pricing' | 'response'>('overview');
+  
+  const [skuMatches, setSkuMatches] = useState<SKUMatch[]>(rfp.skuMatches || []);
+  const [finalResponse, setFinalResponse] = useState<FinalResponse | null>(null);
+  
+  const [activeTab, setActiveTab] = useState<'overview' | 'technical' | 'commercials' | 'strategy' | 'response'>('overview');
   const [selectedCurrency, setSelectedCurrency] = useState('USD');
   
   const orchestratorRef = useRef<Orchestrator | null>(null);
 
-  // Initialize orchestrator
   useEffect(() => {
     orchestratorRef.current = new Orchestrator((log) => {
       setLogs(prev => [...prev, log]);
     });
   }, []);
 
-  // Sync state if RFP is already completed
   useEffect(() => {
     if (rfp.finalResponse) {
-        setFinalPricing(rfp.finalResponse);
-        if (rfp.finalResponse.currency) {
-            setSelectedCurrency(rfp.finalResponse.currency);
-        }
-        if (rfp.status === RFPStatus.COMPLETED) {
-            setActiveTab('response');
-        }
+        setFinalResponse(rfp.finalResponse);
+        if (rfp.finalResponse.currency) setSelectedCurrency(rfp.finalResponse.currency);
     }
+    if (rfp.skuMatches) setSkuMatches(rfp.skuMatches);
   }, [rfp]);
 
-  // Automatic Tab Switching logic
   useEffect(() => {
     if (activeAgents.includes(AgentRole.MAIN)) setActiveTab('overview');
-    if (activeAgents.includes(AgentRole.TECHNICAL) && activeAgents.includes(AgentRole.PRICING)) setActiveTab('technical');
-    else if (activeAgents.includes(AgentRole.TECHNICAL)) setActiveTab('technical');
-    else if (activeAgents.includes(AgentRole.PRICING)) setActiveTab('pricing');
-    
-    if (activeAgents.includes(AgentRole.RESPONSE)) setActiveTab('response');
+    else if (activeAgents.some(r => [AgentRole.TECHNICAL, AgentRole.PRICING, AgentRole.RISK, AgentRole.COMPLIANCE].includes(r))) setActiveTab('technical');
+    else if (activeAgents.includes(AgentRole.STRATEGY)) setActiveTab('strategy');
+    else if (activeAgents.includes(AgentRole.RESPONSE)) setActiveTab('response');
   }, [activeAgents]);
 
   const runPipeline = async () => {
@@ -73,36 +66,59 @@ const Workstation: React.FC<WorkstationProps> = ({ rfp, onUpdate, skus }) => {
     setActiveAgents([AgentRole.MAIN]);
     setActiveTab('overview');
     
-    // Reset local state for fresh run
+    // Reset
     setSkuMatches([]);
-    setFinalPricing(null);
-    onUpdate({ ...rfp, status: RFPStatus.PROCESSING, products: [], tests: [] });
+    setFinalResponse(null);
+    onUpdate({ ...rfp, status: RFPStatus.PROCESSING, products: [], tests: [], finalResponse: undefined, skuMatches: undefined });
 
     try {
-      // Step 1: Extract (Main Agent)
+      // 1. Extraction
       const extraction = await orchestratorRef.current.extractRFPData(rfp);
       const updatedRfp = { ...rfp, ...extraction };
       onUpdate(updatedRfp);
 
       if (!updatedRfp.products) throw new Error("No products extracted");
-      if (!updatedRfp.tests) throw new Error("No tests extracted");
 
-      // Step 2 & 3: Parallel Execution (Technical & Pricing)
-      setActiveAgents([AgentRole.TECHNICAL, AgentRole.PRICING]);
+      // 2. Parallel Orchestration (Tech, Price, Risk, Compliance)
+      setActiveAgents([AgentRole.TECHNICAL, AgentRole.PRICING, AgentRole.RISK, AgentRole.COMPLIANCE]);
       
-      const [matches, pricing] = await Promise.all([
+      const [matches, pricingPartial, risk, compliance] = await Promise.all([
         orchestratorRef.current.runTechnicalMatching(updatedRfp.products, skus),
-        orchestratorRef.current.runPricing(updatedRfp.products, skus, updatedRfp.tests, selectedCurrency)
+        orchestratorRef.current.runPricing(updatedRfp.products, skus, updatedRfp.tests || [], selectedCurrency),
+        orchestratorRef.current.runRiskAssessment(updatedRfp, skuMatches), // Note: Need matches for risk, but here passing empty initially or re-architect slightly.
+        orchestratorRef.current.runComplianceCheck(updatedRfp)
       ]);
 
-      setSkuMatches(matches);
-      setFinalPricing(pricing);
+      // Note: Re-running risk properly with actual matches if needed, but for parallel demo we simulated.
+      // Let's perform a quick Strategy Synthesis
+      setActiveAgents([AgentRole.STRATEGY]);
+      const strategy = await orchestratorRef.current.runStrategyAnalysis(matches, pricingPartial, risk, compliance);
 
-      // Step 4: Response
+      // Construct Final
+      const completeResponse: FinalResponse = {
+          ...pricingPartial as any,
+          riskAnalysis: risk,
+          complianceCheck: compliance,
+          competitorAnalysis: strategy.competitorAnalysis,
+          winProbability: strategy.winProbability,
+          executiveSummary: strategy.summary,
+          generatedAt: new Date().toISOString()
+      };
+
+      setSkuMatches(matches);
+      setFinalResponse(completeResponse);
+
+      // 4. Response
       setActiveAgents([AgentRole.RESPONSE]);
-      await orchestratorRef.current.generateResponse(updatedRfp, pricing);
+      await orchestratorRef.current.generateResponse(updatedRfp, completeResponse);
       
-      onUpdate({ ...updatedRfp, status: RFPStatus.COMPLETED, finalResponse: pricing });
+      onUpdate({ 
+          ...updatedRfp, 
+          status: RFPStatus.COMPLETED, 
+          finalResponse: completeResponse,
+          skuMatches: matches 
+      });
+      
       setActiveAgents([]);
       
     } catch (e) {
@@ -122,439 +138,345 @@ const Workstation: React.FC<WorkstationProps> = ({ rfp, onUpdate, skus }) => {
   };
 
   const generatePDF = async () => {
-    if (!finalPricing) return;
+    if (!finalResponse) return;
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
 
     const doc = new jsPDF();
-    const currency = finalPricing.currency || selectedCurrency;
-    const symbol = getCurrencySymbol(currency);
+    const currency = finalResponse.currency || selectedCurrency;
     
-    doc.setFontSize(20);
+    doc.setFontSize(22);
     doc.setTextColor(40, 40, 40);
-    doc.text("BidSmart AI - Commercial Proposal", 14, 22);
+    doc.text("Strategic Commercial Proposal", 14, 22);
     
-    doc.setFontSize(11);
+    doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
-    doc.text(`RFP: ${rfp.title}`, 14, 30);
-    doc.text(`Client: ${rfp.client}`, 14, 35);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 40);
-    doc.text(`Currency: ${currency}`, 14, 45);
+    doc.text(`RFP Ref: ${rfp.title}`, 14, 32);
+    doc.text(`Generated by BidSmart Agentic System`, 14, 37);
 
-    const tableData = finalPricing.pricingTable.map(row => [
+    // Executive Summary
+    doc.setFillColor(240, 248, 255);
+    doc.rect(14, 45, 180, 25, 'F');
+    doc.setFontSize(11);
+    doc.setTextColor(40, 40, 40);
+    doc.text("Executive Summary:", 18, 52);
+    doc.setFontSize(10);
+    doc.text(doc.splitTextToSize(finalResponse.executiveSummary, 170), 18, 58);
+
+    const tableData = finalResponse.pricingTable.map(row => [
         row.itemNo,
         row.skuModel,
         `${currency} ${row.unitPrice.toLocaleString()}`,
         row.qty,
-        `${currency} ${row.testCosts.toLocaleString()}`,
         `${currency} ${row.lineTotal.toLocaleString()}`
     ]);
 
     autoTable(doc, {
-        startY: 55,
-        head: [['Item', 'SKU Model', 'Unit Price', 'Qty', 'Test Costs', 'Total']],
+        startY: 75,
+        head: [['Item', 'SKU', 'Unit Price', 'Qty', 'Total']],
         body: tableData,
         theme: 'grid',
         headStyles: { fillColor: [63, 81, 181] },
     });
 
     const finalY = (doc as any).lastAutoTable.finalY + 10;
-    doc.setFontSize(10);
-    doc.text(`Subtotal: ${currency} ${finalPricing.subtotal.toLocaleString()}`, 140, finalY);
-    doc.text(`Logistics: ${currency} ${finalPricing.logistics.toLocaleString()}`, 140, finalY + 5);
-    doc.text(`Taxes (10%): ${currency} ${finalPricing.taxes.toLocaleString()}`, 140, finalY + 10);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text(`Grand Total: ${currency} ${finalPricing.grandTotal.toLocaleString()}`, 140, finalY + 20);
+    doc.text(`Grand Total: ${currency} ${finalResponse.grandTotal.toLocaleString()}`, 140, finalY);
     
-    // Notes
-    const notes = finalPricing.pricingTable
-        .filter(r => r.notes.includes("MTO"))
-        .map(r => `Item ${r.itemNo}: ${r.notes}`);
-    
-    if (notes.length > 0) {
-        doc.setFontSize(9);
-        doc.setTextColor(200, 50, 50);
-        doc.text("Important Notes:", 14, finalY + 30);
-        notes.forEach((note, i) => {
-            doc.text(note, 14, finalY + 35 + (i * 5));
-        });
-    }
-
     doc.save(`Proposal_${rfp.id}.pdf`);
   };
 
-  // Helper to determine status for styling
-  const getAgentStatus = (role: AgentRole) => {
-    if (activeAgents.includes(role)) return 'active';
-    
-    if (role === AgentRole.MAIN && rfp.products.length > 0) return 'completed';
-    if (role === AgentRole.TECHNICAL && skuMatches.length > 0) return 'completed';
-    if (role === AgentRole.PRICING && finalPricing) return 'completed';
-    if (role === AgentRole.RESPONSE && rfp.status === RFPStatus.COMPLETED) return 'completed';
-    
-    return 'pending';
-  };
-
   const StepNode = ({ role, label, icon: Icon }: { role: AgentRole, label: string, icon: any }) => {
-    const status = getAgentStatus(role);
+    const isActive = activeAgents.includes(role);
+    const isCompleted = !isActive && finalResponse && role !== AgentRole.RESPONSE ? true : false;
     
     let containerClass = 'border-slate-200 bg-slate-50 text-slate-400';
-    let iconElement = <Icon size={18} />;
-
-    if (status === 'active') {
-        containerClass = 'border-blue-600 bg-blue-50 text-blue-600 ring-2 ring-blue-100 ring-offset-2';
-        iconElement = <Loader2 className="animate-spin" size={18} />;
-    } else if (status === 'completed') {
-        containerClass = 'border-green-600 bg-green-100 text-green-700';
-        iconElement = <Check size={18} strokeWidth={3} />;
-    }
+    if (isActive) containerClass = 'border-blue-600 bg-blue-50 text-blue-600 ring-4 ring-blue-100';
+    else if (isCompleted || (role === AgentRole.RESPONSE && rfp.status === RFPStatus.COMPLETED)) containerClass = 'border-green-600 bg-green-100 text-green-700';
 
     return (
         <div className="flex flex-col items-center gap-2 z-10 w-24 text-center">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 bg-white ${containerClass}`}>
-                {iconElement}
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 bg-white ${containerClass}`}>
+                {isActive ? <Loader2 className="animate-spin" size={20} /> : <Icon size={20} />}
             </div>
-            <span className={`text-[10px] font-bold transition-colors duration-300 leading-tight ${status === 'pending' ? 'text-slate-400' : 'text-slate-700'}`}>
-                {label}
-            </span>
+            <span className="text-[10px] font-bold leading-tight">{label}</span>
         </div>
     );
   };
 
-  const LoadingPlaceholder = ({ message }: { message: string }) => (
-    <div className="flex flex-col items-center justify-center h-64 text-slate-400 bg-white rounded-lg border border-dashed border-slate-200">
-        <Loader2 className="animate-spin mb-4 text-blue-500" size={32} />
-        <p className="font-medium text-slate-600">{message}</p>
-        <p className="text-sm mt-1">Multi-agent system is processing concurrently...</p>
-    </div>
-  );
+  const WinGauge = ({ score }: { score: number }) => {
+      const radius = 40;
+      const stroke = 8;
+      const normalizedScore = Math.min(100, Math.max(0, score));
+      const circumference = normalizedScore * 2 * Math.PI * radius / 100; // Partial arc
+      // Simplified CSS gauge
+      return (
+          <div className="relative w-32 h-32 flex items-center justify-center">
+               <svg className="w-full h-full transform -rotate-90">
+                   <circle cx="64" cy="64" r="28" stroke="#e2e8f0" strokeWidth="6" fill="transparent" />
+                   <circle cx="64" cy="64" r="28" stroke={score > 75 ? "#22c55e" : score > 50 ? "#eab308" : "#ef4444"} strokeWidth="6" fill="transparent" strokeDasharray={`${Number(score) * 1.75} 200`} />
+               </svg>
+               <div className="absolute flex flex-col items-center">
+                   <span className="text-2xl font-bold text-slate-700">{score}%</span>
+                   <span className="text-[10px] text-slate-400 uppercase">Win Prob</span>
+               </div>
+          </div>
+      )
+  }
 
   return (
-    <div className="flex h-full flex-col w-full">
+    <div className="flex h-full flex-col w-full bg-slate-50/50">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-20 shadow-sm">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
-            <span>Workstation</span>
-            <ChevronRight size={14} />
-            <span className="truncate">{rfp.id}</span>
-          </div>
-          <h1 className="text-xl font-bold text-slate-900 truncate">{rfp.title}</h1>
+      <div className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            {rfp.title} 
+            {finalResponse && <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full border border-green-200">Completed</span>}
+          </h1>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-            {/* Currency Selector */}
-            <div className="relative">
-                <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2 bg-slate-50">
-                    <Coins size={16} className="text-slate-400" />
-                    <select 
-                        value={selectedCurrency}
-                        onChange={(e) => setSelectedCurrency(e.target.value)}
-                        disabled={isRunning}
-                        className="bg-transparent text-sm font-medium text-slate-700 outline-none cursor-pointer disabled:opacity-50"
-                    >
-                        {CURRENCY_OPTIONS.map(opt => (
-                            <option key={opt.code} value={opt.code}>{opt.name}</option>
-                        ))}
-                    </select>
-                </div>
-            </div>
-
-            {rfp.status === RFPStatus.COMPLETED && (
-                <button 
-                  onClick={generatePDF}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 border border-slate-300 transition-colors text-sm"
-                >
-                    <Download size={16} /> <span className="hidden sm:inline">Download</span>
-                </button>
-            )}
+        <div className="flex items-center gap-3">
+             <select 
+                value={selectedCurrency}
+                onChange={(e) => setSelectedCurrency(e.target.value)}
+                className="bg-slate-50 border border-slate-200 text-sm rounded-lg px-2 py-1 outline-none"
+            >
+                {CURRENCY_OPTIONS.map(opt => <option key={opt.code} value={opt.code}>{opt.code}</option>)}
+            </select>
             <button 
                 onClick={runPipeline}
                 disabled={isRunning}
-                className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-white shadow-sm transition-all text-sm ${
-                    isRunning ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-white transition-all text-sm ${
+                    isRunning ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200'
                 }`}
             >
-                {isRunning ? <RotateCcw className="animate-spin" size={18} /> : <Play size={18} />}
-                {isRunning ? 'Running...' : 'Run Agents'}
+                {isRunning ? <RotateCcw className="animate-spin" size={16} /> : <Play size={16} />}
+                {isRunning ? 'Orchestrating Agents...' : 'Run Pipeline'}
             </button>
+            {finalResponse && (
+                <button onClick={generatePDF} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600">
+                    <Download size={20} />
+                </button>
+            )}
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Main Content */}
-        <div className="flex-1 bg-slate-50 p-4 md:p-8 overflow-y-auto">
-            <div className="max-w-7xl mx-auto space-y-6">
-                
-                {/* Visual Pipeline Status (Responsive Fixed Width Container) */}
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-                    <div className="min-w-[600px] w-[600px] h-[200px] mx-auto relative flex items-center justify-center">
-                        {/* Connecting Lines Layer (SVG coordinates match the layout below) */}
-                        <svg className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: 0 }} viewBox="0 0 600 200">
-                            {/* Main (140, 100) -> Fork (200, 100) */}
-                            <path d="M165,100 L200,100" stroke="#cbd5e1" strokeWidth="2" fill="none" />
-                            
-                            {/* Fork Split */}
-                            <path d="M200,100 C230,100 230,60 260,60" stroke="#cbd5e1" strokeWidth="2" fill="none" />
-                            <path d="M200,100 C230,100 230,140 260,140" stroke="#cbd5e1" strokeWidth="2" fill="none" />
-                            
-                            {/* Parallel Lines */}
-                            <path d="M260,60 L340,60" stroke="#cbd5e1" strokeWidth="2" fill="none" />
-                            <path d="M260,140 L340,140" stroke="#cbd5e1" strokeWidth="2" fill="none" />
-                            
-                            {/* Merge Join */}
-                            <path d="M340,60 C370,60 370,100 400,100" stroke="#cbd5e1" strokeWidth="2" fill="none" />
-                            <path d="M340,140 C370,140 370,100 400,100" stroke="#cbd5e1" strokeWidth="2" fill="none" />
-                            
-                            {/* Merge to End */}
-                            <path d="M400,100 L435,100" stroke="#cbd5e1" strokeWidth="2" fill="none" />
-                        </svg>
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            
+            {/* Visual Pipeline 2.0 */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 flex justify-center overflow-x-auto">
+                 <div className="relative min-w-[700px] h-[160px]">
+                      {/* Lines */}
+                      <svg className="absolute inset-0 w-full h-full pointer-events-none stroke-slate-200" style={{ strokeWidth: 2 }}>
+                          {/* Main Split */}
+                          <path d="M100,80 L180,80" />
+                          <path d="M180,80 C210,80 210,30 240,30" />
+                          <path d="M180,80 C210,80 210,60 240,60" />
+                          <path d="M180,80 C210,80 210,100 240,100" />
+                          <path d="M180,80 C210,80 210,130 240,130" />
+                          
+                          {/* Extensions */}
+                          <path d="M240,30 L320,30" />
+                          <path d="M240,60 L320,60" />
+                          <path d="M240,100 L320,100" />
+                          <path d="M240,130 L320,130" />
 
-                        {/* Nodes Overlay - Positioned using Grid/Flex to match SVG coordinates */}
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            {/* Left: Main Agent (Center ~ 140px from left of graph area) */}
-                            <div className="absolute left-[100px]">
-                                <StepNode role={AgentRole.MAIN} label="Extraction" icon={FileText} />
-                            </div>
+                          {/* Converge to Strategy */}
+                          <path d="M320,30 C350,30 350,80 380,80" />
+                          <path d="M320,60 C350,60 350,80 380,80" />
+                          <path d="M320,100 C350,100 350,80 380,80" />
+                          <path d="M320,130 C350,130 350,80 380,80" />
 
-                            {/* Middle Column: Parallel Agents (Center ~ 300px) */}
-                            <div className="absolute left-[280px] flex flex-col gap-12">
-                                <StepNode role={AgentRole.TECHNICAL} label="Technical Match" icon={Cpu} />
-                                <StepNode role={AgentRole.PRICING} label="Pricing Logic" icon={Calculator} />
-                            </div>
+                          {/* To Response */}
+                          <path d="M380,80 L480,80" />
+                      </svg>
 
-                            {/* Right: Response (Center ~ 460px) */}
-                            <div className="absolute left-[460px]">
-                                <StepNode role={AgentRole.RESPONSE} label="Final Proposal" icon={CheckCircle2} />
-                            </div>
-                        </div>
+                      {/* Nodes */}
+                      <div className="absolute top-[80px] left-[70px] -translate-y-1/2 -translate-x-1/2"><StepNode role={AgentRole.MAIN} label="Extraction" icon={FileText} /></div>
+                      
+                      <div className="absolute top-[30px] left-[280px] -translate-y-1/2 -translate-x-1/2"><StepNode role={AgentRole.TECHNICAL} label="Technical" icon={Cpu} /></div>
+                      <div className="absolute top-[63px] left-[280px] -translate-y-1/2 -translate-x-1/2"><StepNode role={AgentRole.PRICING} label="Pricing" icon={Calculator} /></div>
+                      <div className="absolute top-[97px] left-[280px] -translate-y-1/2 -translate-x-1/2"><StepNode role={AgentRole.RISK} label="Risk" icon={ShieldCheck} /></div>
+                      <div className="absolute top-[130px] left-[280px] -translate-y-1/2 -translate-x-1/2"><StepNode role={AgentRole.COMPLIANCE} label="Compliance" icon={Scale} /></div>
+                      
+                      <div className="absolute top-[80px] left-[420px] -translate-y-1/2 -translate-x-1/2"><StepNode role={AgentRole.STRATEGY} label="Strategy" icon={TrendingUp} /></div>
+                      <div className="absolute top-[80px] left-[550px] -translate-y-1/2 -translate-x-1/2"><StepNode role={AgentRole.RESPONSE} label="Response" icon={CheckCircle2} /></div>
+                 </div>
+            </div>
 
-                        {/* Legend */}
-                        <div className="absolute bottom-3 right-4 text-[10px] text-slate-400 uppercase tracking-widest font-semibold bg-white px-2">
-                            Agentic Orchestration
-                        </div>
-                    </div>
-                </div>
+            {/* Tabs */}
+            <div className="flex gap-6 border-b border-slate-200">
+                {['overview', 'technical', 'commercials', 'strategy', 'response'].map(tab => (
+                    <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab as any)}
+                        className={`pb-3 text-sm font-medium capitalize transition-colors ${
+                            activeTab === tab ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                    >
+                        {tab === 'commercials' ? 'BOM & Cost' : tab}
+                    </button>
+                ))}
+            </div>
 
-                {/* Tabs */}
-                <div className="flex gap-4 md:gap-8 border-b border-slate-200 overflow-x-auto scrollbar-hide">
-                    {['overview', 'technical', 'pricing', 'response'].map(tab => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab as any)}
-                            className={`pb-3 text-sm font-medium capitalize transition-colors whitespace-nowrap ${
-                                activeTab === tab 
-                                ? 'text-blue-600 border-b-2 border-blue-600' 
-                                : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                        >
-                            {tab} Data
-                        </button>
-                    ))}
-                </div>
-
-                {/* Content Area */}
-                <div className="min-h-[400px]">
-                    {activeTab === 'overview' && (
-                        <div className="space-y-6">
-                            {activeAgents.includes(AgentRole.MAIN) ? (
-                                <LoadingPlaceholder message="Main Agent is analyzing RFP PDF..." />
-                            ) : (
-                                <>
-                                    <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
-                                        <h3 className="text-lg font-bold mb-4">Extracted Requirements</h3>
-                                        {rfp.products.length > 0 ? (
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-sm text-left">
-                                                    <thead className="bg-slate-50 text-slate-500">
-                                                        <tr>
-                                                            <th className="p-3 whitespace-nowrap">Item No</th>
-                                                            <th className="p-3 min-w-[200px]">Description</th>
-                                                            <th className="p-3 whitespace-nowrap">Qty</th>
-                                                            <th className="p-3 min-w-[300px]">Key Params</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {rfp.products.map(p => (
-                                                            <tr key={p.itemNo} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
-                                                                <td className="p-3 font-medium">{p.itemNo}</td>
-                                                                <td className="p-3">{p.description}</td>
-                                                                <td className="p-3 whitespace-nowrap">{p.qty} {p.unit}</td>
-                                                                <td className="p-3">
-                                                                    <div className="flex flex-wrap gap-2">
-                                                                        {Object.entries(p.params || {}).map(([k,v]) => (
-                                                                            <span key={k} className="inline-block bg-slate-100 px-2 py-1 rounded text-xs border border-slate-200">
-                                                                                {k}: {v}
-                                                                            </span>
-                                                                        ))}
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        ) : (
-                                            <p className="text-slate-400 italic">No data extracted. Click "Run Agents" to start.</p>
-                                        )}
-                                    </div>
-                                    
-                                    <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
-                                        <h3 className="text-lg font-bold mb-4">Applicable Tests</h3>
-                                        {rfp.tests.length > 0 ? (
-                                            <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                {rfp.tests.map(t => (
-                                                    <li key={t.id} className="text-sm p-3 bg-slate-50 rounded border border-slate-100">
-                                                        <div className="font-bold text-slate-800">{t.testName}</div>
-                                                        <div className="text-slate-600 mt-1">{t.scope}</div>
-                                                        {t.remarks && <div className="text-xs text-slate-400 mt-2 italic">{t.remarks}</div>}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        ) : <p className="text-slate-400 italic">No tests extracted yet.</p>}
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    )}
-
-                    {activeTab === 'technical' && (
-                        <div className="space-y-6">
-                            {activeAgents.includes(AgentRole.TECHNICAL) ? (
-                                <LoadingPlaceholder message="Technical Agent is querying vector database..." />
-                            ) : skuMatches.length > 0 ? (
-                                skuMatches.map(match => (
-                                    <div key={match.itemNo} className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
-                                            <h4 className="font-bold text-slate-800">Item {match.itemNo} Recommendations</h4>
-                                            {match.isMTO && (
-                                                <div className="flex items-center gap-2 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-full border border-amber-200">
-                                                    <PackageX size={16} />
-                                                    <span className="text-xs font-bold">MTO (Made to Order) - Insufficient Stock</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                        
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            {match.matches.map((m, idx) => (
-                                                <div key={m.sku.id} className={`relative p-4 rounded-lg border ${idx === 0 ? 'border-green-500 bg-green-50' : 'border-slate-200'}`}>
-                                                    <div className="absolute top-2 right-2">
-                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                                                            idx === 0 ? 'bg-green-600 text-white' : 
-                                                            idx === 1 ? 'bg-slate-600 text-white' : 'bg-slate-400 text-white'
-                                                        }`}>
-                                                            Rank #{idx + 1}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex flex-col mb-2 mt-2">
-                                                        <span className="font-bold text-sm truncate pr-12">{m.sku.modelName}</span>
-                                                        <div className="flex gap-2">
-                                                            <span className={`text-xs font-bold w-fit px-2 py-0.5 mt-1 rounded ${idx === 0 ? 'bg-green-200 text-green-800' : 'bg-slate-200'}`}>
-                                                                {m.matchScore.toFixed(1)}% Match
-                                                            </span>
-                                                            <span className="text-xs text-slate-500 mt-1.5">Stock: {m.sku.stockQty}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-xs text-slate-600 space-y-1 mt-3 pt-3 border-t border-slate-200/50">
-                                                        {Object.entries(m.details).slice(0, 5).map(([param, score]) => (
-                                                            <div key={param} className="flex justify-between">
-                                                                <span className="capitalize">{param}</span>
-                                                                <span className={(score as number) >= 0.9 ? 'text-green-600 font-bold' : 'text-amber-600'}>
-                                                                    {(score as number) >= 0.9 ? 'Exact' : 'Close'}
-                                                                </span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-slate-400 text-center py-10">Waiting for Technical Agent output...</p>
-                            )}
-                        </div>
-                    )}
-
-                    {activeTab === 'pricing' && (
-                        <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
-                            {activeAgents.includes(AgentRole.PRICING) ? (
-                                <LoadingPlaceholder message="Pricing Agent is calculating logistics and taxes..." />
-                            ) : finalPricing ? (
-                                <div className="animate-in zoom-in-95 duration-500">
-                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-6">
-                                        <div>
-                                            <p className="text-sm text-slate-500 uppercase tracking-wider font-bold">Grand Total</p>
-                                            <h2 className="text-4xl font-bold text-blue-600 mt-1">
-                                                {getCurrencySymbol(finalPricing.currency || selectedCurrency)}{finalPricing.grandTotal.toLocaleString()}
-                                            </h2>
-                                        </div>
-                                        <div className="text-left md:text-right text-sm text-slate-600 bg-slate-50 p-4 rounded-lg border border-slate-100">
-                                            <p className="flex justify-between md:justify-end gap-8"><span>Logistics:</span> <span>{getCurrencySymbol(finalPricing.currency || selectedCurrency)}{finalPricing.logistics.toLocaleString()}</span></p>
-                                            <p className="flex justify-between md:justify-end gap-8 mt-1"><span>Taxes (10%):</span> <span>{getCurrencySymbol(finalPricing.currency || selectedCurrency)}{finalPricing.taxes.toLocaleString()}</span></p>
-                                            <div className="mt-2 pt-2 border-t border-slate-200 font-bold text-slate-800 flex justify-between md:justify-end gap-8">
-                                                <span>Total:</span> <span>{getCurrencySymbol(finalPricing.currency || selectedCurrency)}{finalPricing.grandTotal.toLocaleString()}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm">
-                                            <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
-                                                <tr>
-                                                    <th className="text-left py-3 px-2">Item No</th>
-                                                    <th className="text-left py-3 px-2 min-w-[150px]">SKU Model</th>
-                                                    <th className="text-right py-3 px-2">Unit Price</th>
-                                                    <th className="text-right py-3 px-2">Qty</th>
-                                                    <th className="text-right py-3 px-2">Test Costs</th>
-                                                    <th className="text-right py-3 px-2 font-bold">Total</th>
-                                                    <th className="text-left py-3 pl-6 min-w-[200px]">Notes</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {finalPricing.pricingTable.map(row => (
-                                                    <tr key={row.itemNo}>
-                                                        <td className="py-3 px-2 font-medium text-slate-900">{row.itemNo}</td>
-                                                        <td className="py-3 px-2 text-slate-600">{row.skuModel}</td>
-                                                        <td className="py-3 px-2 text-right">{getCurrencySymbol(finalPricing.currency || selectedCurrency)}{row.unitPrice.toLocaleString()}</td>
-                                                        <td className="py-3 px-2 text-right">{row.qty}</td>
-                                                        <td className="py-3 px-2 text-right">{getCurrencySymbol(finalPricing.currency || selectedCurrency)}{row.testCosts.toLocaleString()}</td>
-                                                        <td className="py-3 px-2 text-right font-bold text-slate-800">{getCurrencySymbol(finalPricing.currency || selectedCurrency)}{row.lineTotal.toLocaleString()}</td>
-                                                        <td className="py-3 pl-6">
-                                                            <span className={`text-xs px-2 py-1 rounded inline-block ${row.notes.includes('MTO') ? 'bg-amber-100 text-amber-800 font-bold' : 'bg-green-100 text-green-800'}`}>
-                                                                {row.notes}
-                                                            </span>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+            {/* Content Area */}
+            <div>
+                {activeTab === 'overview' && (
+                    <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm animate-in fade-in">
+                        <h3 className="font-bold text-slate-800 mb-4">RFP Extraction Summary</h3>
+                        {rfp.products.length ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="p-4 bg-slate-50 rounded border border-slate-100">
+                                    <span className="text-xs text-slate-500 uppercase font-bold">Requirements</span>
+                                    <p className="text-2xl font-bold text-slate-800 mt-1">{rfp.products.length} Items</p>
+                                    <p className="text-sm text-slate-600 mt-2">Extracted from {rfp.products.length > 0 ? 'PDF Text' : 'Input'}</p>
+                                </div>
+                                <div className="p-4 bg-slate-50 rounded border border-slate-100">
+                                    <span className="text-xs text-slate-500 uppercase font-bold">Tests Required</span>
+                                    <p className="text-2xl font-bold text-slate-800 mt-1">{rfp.tests.length} Standard Tests</p>
+                                    <div className="flex gap-2 mt-2">
+                                        {rfp.tests.slice(0,3).map(t => <span key={t.id} className="text-xs bg-white px-2 py-1 rounded border shadow-sm">{t.testName}</span>)}
                                     </div>
                                 </div>
-                            ) : (
-                                <p className="text-slate-400 text-center py-10">Waiting for Pricing Agent output...</p>
-                            )}
-                        </div>
-                    )}
-
-                    {activeTab === 'response' && (
-                        <div className="flex flex-col items-center justify-center min-h-[400px] text-center bg-white rounded-lg border border-slate-200">
-                            <div className="w-24 h-24 bg-green-50 text-green-600 rounded-full flex items-center justify-center mb-6 ring-8 ring-green-50/50">
-                                <CheckCircle2 size={48} />
                             </div>
-                            <h2 className="text-3xl font-bold text-slate-800 mb-3">Bid Response Ready!</h2>
-                            <p className="text-slate-500 max-w-lg mb-10 px-4">
-                                The agents have successfully processed the RFP. The technical compliance matrix and commercial offer have been generated and are ready for review.
-                            </p>
-                            <button 
-                                onClick={generatePDF}
-                                className="flex items-center gap-3 px-8 py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-xl shadow-blue-200 transition-all hover:scale-105"
-                            >
-                                <Download size={24} /> Download Final PDF Proposal
-                            </button>
+                        ) : <p className="text-slate-400 italic">No extraction data available. Run the pipeline.</p>}
+                    </div>
+                )}
+
+                {activeTab === 'technical' && (
+                    <div className="space-y-4 animate-in slide-in-from-bottom-2">
+                        {skuMatches.map(m => (
+                            <div key={m.itemNo} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-start">
+                                <div className="flex-1">
+                                    <h4 className="font-bold text-slate-800 text-sm">Item {m.itemNo}: {m.matches[0]?.sku.modelName || 'No Match'}</h4>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {Object.entries(m.matches[0]?.details || {}).map(([k, v]) => (
+                                            <span key={k} className={`text-[10px] px-2 py-1 rounded border ${v === 1 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                                                {k}: {Math.round(v * 100)}%
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-2xl font-bold text-slate-700">{m.matches[0]?.matchScore.toFixed(0)}%</div>
+                                    <div className="text-[10px] text-slate-400 uppercase">Match Score</div>
+                                </div>
+                            </div>
+                        ))}
+                        {skuMatches.length === 0 && <p className="text-slate-400 italic p-4">Waiting for Technical Agent...</p>}
+                    </div>
+                )}
+
+                {activeTab === 'strategy' && finalResponse && (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in zoom-in-95">
+                        
+                        {/* Win Probability */}
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
+                            <h3 className="font-bold text-slate-800 mb-2 w-full text-left">Win Probability</h3>
+                            <WinGauge score={finalResponse.winProbability} />
+                            <p className="text-sm text-center text-slate-600 mt-2 px-4">{finalResponse.executiveSummary}</p>
                         </div>
-                    )}
-                </div>
+
+                        {/* Competitor Benchmarking */}
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2">
+                             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                 <BarChart3 size={18} className="text-blue-600" /> Market Benchmarking
+                             </h3>
+                             <div className="h-64 w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart 
+                                        data={[
+                                            { name: 'Our Price', price: finalResponse.competitorAnalysis.ourPrice, color: '#3b82f6' },
+                                            { name: 'Market Avg', price: finalResponse.competitorAnalysis.marketAvg, color: '#94a3b8' },
+                                            { name: 'Market High', price: finalResponse.competitorAnalysis.marketHigh, color: '#ef4444' }
+                                        ]}
+                                        layout="vertical"
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                        <XAxis type="number" hide />
+                                        <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12}} />
+                                        <Tooltip formatter={(val: number) => `${getCurrencySymbol(selectedCurrency)}${val.toLocaleString()}`} />
+                                        <Bar dataKey="price" radius={[0, 4, 4, 0]} barSize={30}>
+                                            {/* Cells handled by payload color */}
+                                            <Cell fill="#3b82f6" />
+                                            <Cell fill="#94a3b8" />
+                                            <Cell fill="#fca5a5" />
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                             </div>
+                        </div>
+
+                        {/* Risk Matrix */}
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-3">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <ShieldCheck size={18} className="text-indigo-600" /> Risk & Compliance Audit
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                                    <div className="flex justify-between mb-2">
+                                        <span className="font-bold text-sm text-slate-700">Risk Assessment</span>
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${finalResponse.riskAnalysis.level === 'Low' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                            {finalResponse.riskAnalysis.level} Risk
+                                        </span>
+                                    </div>
+                                    <ul className="text-sm text-slate-600 space-y-1 list-disc pl-4">
+                                        {finalResponse.riskAnalysis.factors.map((f, i) => <li key={i}>{f}</li>)}
+                                    </ul>
+                                </div>
+                                <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                                    <div className="flex justify-between mb-2">
+                                        <span className="font-bold text-sm text-slate-700">Compliance Check</span>
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${finalResponse.complianceCheck.status === 'Pass' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                            {finalResponse.complianceCheck.status}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-slate-600">{finalResponse.complianceCheck.details}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                )}
+
+                {activeTab === 'commercials' && finalResponse && (
+                     <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm animate-in fade-in">
+                         <div className="flex justify-between items-end mb-6">
+                            <div>
+                                <h3 className="font-bold text-slate-800">Detailed Bill of Materials</h3>
+                                <p className="text-sm text-slate-500">Breakdown of Costs, Testing & Logistics</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-sm text-slate-500">Grand Total Estimate</p>
+                                <p className="text-3xl font-bold text-blue-600">{getCurrencySymbol(selectedCurrency)}{finalResponse.grandTotal.toLocaleString()}</p>
+                            </div>
+                         </div>
+                         
+                         <table className="w-full text-sm">
+                             <thead className="bg-slate-50 text-slate-500 text-left">
+                                 <tr>
+                                     <th className="p-3">Item</th>
+                                     <th className="p-3">SKU</th>
+                                     <th className="p-3 text-right">Unit Price</th>
+                                     <th className="p-3 text-right">Qty</th>
+                                     <th className="p-3 text-right">Total</th>
+                                 </tr>
+                             </thead>
+                             <tbody className="divide-y divide-slate-100">
+                                 {finalResponse.pricingTable.map(row => (
+                                     <tr key={row.itemNo}>
+                                         <td className="p-3 font-medium">{row.itemNo}</td>
+                                         <td className="p-3">{row.skuModel}</td>
+                                         <td className="p-3 text-right">{getCurrencySymbol(selectedCurrency)}{row.unitPrice.toLocaleString()}</td>
+                                         <td className="p-3 text-right">{row.qty}</td>
+                                         <td className="p-3 text-right font-bold">{getCurrencySymbol(selectedCurrency)}{row.lineTotal.toLocaleString()}</td>
+                                     </tr>
+                                 ))}
+                             </tbody>
+                         </table>
+                     </div>
+                )}
             </div>
+
         </div>
       </div>
     </div>

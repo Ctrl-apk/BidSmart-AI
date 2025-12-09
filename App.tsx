@@ -44,16 +44,26 @@ export default function App() {
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard rfps={rfps} onViewRfp={navigateToRfp} skus={skus} />;
+        return <Dashboard 
+          rfps={rfps} 
+          onViewRfp={navigateToRfp} 
+          skus={skus} 
+          onNavigate={setCurrentView} 
+        />;
       case 'sales':
-        return <SalesConsole rfps={rfps} setRfps={setRfps} onSelect={navigateToRfp} />;
+        return <SalesConsole rfps={rfps} setRfps={setRfps} onSelect={navigateToRfp} skus={skus} />;
       case 'workstation':
         if (!selectedRfp) return <div className="p-8 text-center text-slate-500">Please select an RFP from the Dashboard or Sales Console.</div>;
         return <Workstation rfp={selectedRfp} onUpdate={updateRfp} skus={skus} />;
       case 'admin':
         return <AdminPanel skus={skus} setSkus={setSkus} />;
       default:
-        return <Dashboard rfps={rfps} onViewRfp={navigateToRfp} skus={skus} />;
+        return <Dashboard 
+          rfps={rfps} 
+          onViewRfp={navigateToRfp} 
+          skus={skus} 
+          onNavigate={setCurrentView} 
+        />;
     }
   };
 

@@ -8,9 +8,10 @@ interface DashboardProps {
   rfps: RFP[];
   onViewRfp: (id: string) => void;
   skus: SKU[];
+  onNavigate: (view: 'dashboard' | 'sales' | 'workstation' | 'admin') => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ rfps, onViewRfp, skus }) => {
+const Dashboard: React.FC<DashboardProps> = ({ rfps, onViewRfp, skus, onNavigate }) => {
   const stats = {
     discovered: rfps.filter(r => r.status === RFPStatus.DISCOVERED).length,
     completed: rfps.filter(r => r.status === RFPStatus.COMPLETED).length,
@@ -34,8 +35,11 @@ const Dashboard: React.FC<DashboardProps> = ({ rfps, onViewRfp, skus }) => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         
         {/* Step 1 */}
-        <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 flex gap-3 hover:border-blue-200 transition-colors">
-          <div className="bg-white border border-slate-200 text-blue-600 w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 shadow-sm">
+        <div 
+            onClick={() => onNavigate('admin')}
+            className="p-4 bg-slate-50 rounded-lg border border-slate-100 flex gap-3 hover:border-blue-200 hover:bg-blue-50/50 transition-colors cursor-pointer group"
+        >
+          <div className="bg-white border border-slate-200 text-blue-600 w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 shadow-sm group-hover:scale-110 transition-transform">
              <Settings size={18} />
           </div>
           <div>
@@ -48,8 +52,11 @@ const Dashboard: React.FC<DashboardProps> = ({ rfps, onViewRfp, skus }) => {
         </div>
 
         {/* Step 2 */}
-        <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 flex gap-3 hover:border-indigo-200 transition-colors">
-          <div className="bg-white border border-slate-200 text-indigo-600 w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 shadow-sm">
+        <div 
+            onClick={() => onNavigate('sales')}
+            className="p-4 bg-slate-50 rounded-lg border border-slate-100 flex gap-3 hover:border-indigo-200 hover:bg-indigo-50/50 transition-colors cursor-pointer group"
+        >
+          <div className="bg-white border border-slate-200 text-indigo-600 w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 shadow-sm group-hover:scale-110 transition-transform">
              <ShoppingCart size={18} />
           </div>
           <div>
@@ -62,8 +69,11 @@ const Dashboard: React.FC<DashboardProps> = ({ rfps, onViewRfp, skus }) => {
         </div>
 
         {/* Step 3 */}
-        <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 flex gap-3 hover:border-green-200 transition-colors">
-          <div className="bg-white border border-slate-200 text-green-600 w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 shadow-sm">
+        <div 
+            onClick={() => onNavigate('workstation')}
+            className="p-4 bg-slate-50 rounded-lg border border-slate-100 flex gap-3 hover:border-green-200 hover:bg-green-50/50 transition-colors cursor-pointer group"
+        >
+          <div className="bg-white border border-slate-200 text-green-600 w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 shadow-sm group-hover:scale-110 transition-transform">
              <Briefcase size={18} />
           </div>
           <div>
@@ -99,7 +109,10 @@ const Dashboard: React.FC<DashboardProps> = ({ rfps, onViewRfp, skus }) => {
                       <p className="text-sm text-slate-500 mb-4 relative z-10">
                           The Technical Agent needs product data to perform matching.
                       </p>
-                      <button className="text-blue-600 text-sm font-bold flex items-center gap-1 hover:underline relative z-10">
+                      <button 
+                        onClick={() => onNavigate('admin')}
+                        className="text-blue-600 text-sm font-bold flex items-center gap-1 hover:underline relative z-10"
+                      >
                           Go to Admin Panel <ArrowRight size={14} />
                       </button>
                   </div>
@@ -112,7 +125,10 @@ const Dashboard: React.FC<DashboardProps> = ({ rfps, onViewRfp, skus }) => {
                       <p className="text-sm text-slate-500 mb-4 relative z-10">
                           Use the Sales Agent to scan the web for new opportunities.
                       </p>
-                      <button className="text-indigo-600 text-sm font-bold flex items-center gap-1 hover:underline relative z-10">
+                      <button 
+                        onClick={() => onNavigate('sales')}
+                        className="text-indigo-600 text-sm font-bold flex items-center gap-1 hover:underline relative z-10"
+                      >
                           Go to Sales Console <ArrowRight size={14} />
                       </button>
                   </div>
@@ -125,7 +141,10 @@ const Dashboard: React.FC<DashboardProps> = ({ rfps, onViewRfp, skus }) => {
                       <p className="text-sm text-slate-500 mb-4 relative z-10">
                           Run the workstation agents to generate PDFs.
                       </p>
-                      <button className="text-green-600 text-sm font-bold flex items-center gap-1 hover:underline relative z-10">
+                      <button 
+                        onClick={() => onNavigate('workstation')}
+                        className="text-green-600 text-sm font-bold flex items-center gap-1 hover:underline relative z-10"
+                      >
                           Go to Workstation <ArrowRight size={14} />
                       </button>
                   </div>
@@ -164,7 +183,7 @@ const Dashboard: React.FC<DashboardProps> = ({ rfps, onViewRfp, skus }) => {
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm font-medium text-slate-500">Avg. Turnaround</p>
-              <h3 className="text-3xl font-bold text-slate-900 mt-2">1.2h</h3>
+              <h3 className="text-3xl font-bold text-slate-900 mt-2">--</h3>
             </div>
             <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
               <Clock size={24} />
@@ -177,7 +196,7 @@ const Dashboard: React.FC<DashboardProps> = ({ rfps, onViewRfp, skus }) => {
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm font-medium text-slate-500">Auto-Complete Rate</p>
-              <h3 className="text-3xl font-bold text-slate-900 mt-2">85%</h3>
+              <h3 className="text-3xl font-bold text-slate-900 mt-2">--</h3>
             </div>
             <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
               <CheckCircle size={24} />

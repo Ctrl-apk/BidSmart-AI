@@ -49,8 +49,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-4xl w-full flex flex-col md:flex-row min-h-[500px]">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-w-4xl w-full flex flex-col md:flex-row min-h-[500px]">
         
         {/* Left Side: Brand & Visuals */}
         <div className="bg-blue-600 text-white p-12 md:w-5/12 flex flex-col justify-between relative overflow-hidden">
@@ -87,14 +87,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             <form onSubmit={handleSubmit} className="space-y-5">
                 {!isLogin && (
                     <div className="space-y-1">
-                        <label className="text-sm font-medium text-slate-400">Full Name</label>
+                        <label className="text-sm font-medium text-slate-500">Full Name</label>
                         <div className="relative">
                             <UserIcon className="absolute left-3 top-3 text-slate-400" size={18} />
                             <input 
                                 type="text"
                                 value={formData.name}
                                 onChange={e => setFormData({...formData, name: e.target.value})}
-                                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                                 placeholder="John Doe"
                             />
                         </div>
@@ -102,28 +102,28 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 )}
 
                 <div className="space-y-1">
-                    <label className="text-sm font-medium text-slate-400">Email Address</label>
+                    <label className="text-sm font-medium text-slate-500">Email Address</label>
                     <div className="relative">
                         <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
                         <input 
                             type="email"
                             value={formData.email}
                             onChange={e => setFormData({...formData, email: e.target.value})}
-                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                             placeholder="name@company.com"
                         />
                     </div>
                 </div>
 
                 <div className="space-y-1">
-                    <label className="text-sm font-medium text-slate-400">Password</label>
+                    <label className="text-sm font-medium text-slate-500">Password</label>
                     <div className="relative">
                         <Lock className="absolute left-3 top-3 text-slate-400" size={18} />
                         <input 
                             type="password"
                             value={formData.password}
                             onChange={e => setFormData({...formData, password: e.target.value})}
-                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                             placeholder="••••••••"
                         />
                     </div>
@@ -167,7 +167,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       </div>
       
       {/* Footer / Copyright */}
-      <div className="fixed bottom-4 text-slate-500 text-xs opacity-50">
+      <div className="fixed bottom-4 text-slate-400 text-xs">
         &copy; 2024 BidSmart AI. Enterprise Grade Security.
       </div>
     </div>

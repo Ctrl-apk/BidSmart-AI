@@ -31,17 +31,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout,
   return (
     <>
       <div className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl transition-transform duration-300 ease-in-out
+        fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 text-slate-600 flex flex-col shadow-xl transition-transform duration-300 ease-in-out
         md:relative md:translate-x-0
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="p-6 border-b border-slate-800 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-              <span className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-sm">BS</span>
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
+              <span className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-sm text-white">BS</span>
               BidSmart AI
           </h1>
           {/* Mobile Close Button */}
-          <button onClick={onClose} className="md:hidden text-slate-400 hover:text-white">
+          <button onClick={onClose} className="md:hidden text-slate-400 hover:text-slate-600">
             <X size={20} />
           </button>
         </div>
@@ -56,31 +56,31 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout,
                 onClick={() => setView(item.id)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                   active 
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' 
-                  : 'hover:bg-slate-800 hover:text-white'
+                  ? 'bg-blue-50 text-blue-600 border border-blue-100' 
+                  : 'hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Icon size={20} />
+                <Icon size={20} className={active ? "text-blue-600" : "text-slate-400"} />
                 <span className="font-medium">{item.label}</span>
               </button>
             );
           })}
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
-          <div className="flex items-center justify-between px-2 py-2 bg-slate-800/50 rounded-lg">
+        <div className="p-4 border-t border-slate-100">
+          <div className="flex items-center justify-between px-2 py-2 bg-slate-50 rounded-lg border border-slate-100">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs text-white border border-slate-600">
+              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center font-bold text-xs text-blue-600 border border-slate-200 shadow-sm">
                 {initials}
               </div>
               <div className="overflow-hidden">
-                <p className="text-sm font-medium text-white truncate max-w-[90px]">{user.name}</p>
-                <p className="text-[10px] text-slate-400 truncate max-w-[90px]">{user.role}</p>
+                <p className="text-sm font-medium text-slate-800 truncate max-w-[90px]">{user.name}</p>
+                <p className="text-[10px] text-slate-500 truncate max-w-[90px]">{user.role}</p>
               </div>
             </div>
             <button 
               onClick={onLogout}
-              className="p-1.5 hover:bg-slate-700 rounded-md text-slate-400 hover:text-red-400 transition-colors"
+              className="p-1.5 hover:bg-slate-200 rounded-md text-slate-400 hover:text-red-500 transition-colors"
               title="Sign Out"
             >
               <LogOut size={16} />

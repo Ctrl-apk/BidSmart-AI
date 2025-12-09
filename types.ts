@@ -4,6 +4,9 @@ export enum AgentRole {
   MAIN = 'Main Agent',
   TECHNICAL = 'Technical Agent',
   PRICING = 'Pricing Agent',
+  RISK = 'Risk Agent',
+  COMPLIANCE = 'Compliance Agent',
+  STRATEGY = 'Strategy Agent',
   RESPONSE = 'Response Agent',
 }
 
@@ -31,6 +34,8 @@ export interface RFP {
   products: ProductRequirement[];
   tests: TestRequirement[];
   finalResponse?: FinalResponse;
+  skuMatches?: SKUMatch[];
+  matchLikelihood?: 'High' | 'Medium' | 'Low';
 }
 
 export interface ProductRequirement {
@@ -84,6 +89,28 @@ export interface PricingLine {
   notes: string;
 }
 
+export interface RiskAnalysis {
+  score: number; // 0-100 (Lower is better)
+  level: 'Low' | 'Medium' | 'High' | 'Critical';
+  factors: string[];
+  mitigation: string;
+}
+
+export interface ComplianceCheck {
+  status: 'Pass' | 'Conditional' | 'Fail';
+  missingStandards: string[];
+  termsEvaluated: number;
+  details: string;
+}
+
+export interface CompetitorAnalysis {
+  ourPrice: number;
+  marketAvg: number;
+  marketHigh: number;
+  marketLow: number;
+  position: 'Premium' | 'Competitive' | 'Low-Cost';
+}
+
 export interface FinalResponse {
   pricingTable: PricingLine[];
   subtotal: number;
@@ -93,6 +120,13 @@ export interface FinalResponse {
   grandTotal: number;
   generatedAt: string;
   currency: string;
+  
+  // Strategic Additions
+  riskAnalysis: RiskAnalysis;
+  complianceCheck: ComplianceCheck;
+  competitorAnalysis: CompetitorAnalysis;
+  winProbability: number; // 0 - 100
+  executiveSummary: string;
 }
 
 export interface LogEntry {
