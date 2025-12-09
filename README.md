@@ -28,7 +28,11 @@ The core engine runs a parallel orchestration pipeline:
 *   **Risk & Compliance Agents:** Scans legal terms for liability risks (Liquidated Damages, Warranty) and checks for required certifications (ISO, ASTM).
 *   **Strategy Agent:** Synthesizes data to calculate a "Win Probability" score and positions the bid against simulated market competitors.
 
-### 4. Proposal Generation 📄
+### 4. Advanced Analytics & Visualization 📊
+*   **Graphical Representation:** Includes bar graphs, histograms, pie charts, and heat maps to visualize pipeline health, competitor pricing, and inventory distribution.
+*   **Deep Analysis:** Provides real-time visual insights into "Win Probability" trends and market positioning.
+
+### 5. Proposal Generation 📄
 *   **PDF Export:** One-click generation of a professional proposal PDF containing the Executive Summary and Commercial Pricing Table.
 
 ---
