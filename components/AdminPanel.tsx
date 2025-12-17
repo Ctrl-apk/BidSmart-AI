@@ -1,6 +1,5 @@
-
 import React, { useRef, useState } from 'react';
-import { Upload, Database, Settings, Package, AlertCircle, FileSpreadsheet, Loader2, FileType, Wand2 } from 'lucide-react';
+import { Upload, Database, Settings, Package, AlertCircle, FileSpreadsheet, Loader2, FileType } from 'lucide-react';
 import { SKU } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 import * as XLSX from 'xlsx';
@@ -14,7 +13,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ skus, setSkus }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [importStatus, setImportStatus] = useState<string>('');
-    const [isGenerating, setIsGenerating] = useState(false);
 
     const handleStockUpdate = (id: string, newQty: number) => {
         setSkus(prev => prev.map(sku => sku.id === id ? { ...sku, stockQty: newQty } : sku));
@@ -274,29 +272,6 @@ Return ONLY the JSON. Do not include explanations, natural language, tags, or co
         }
     };
 
-    const handleGenerateMockData = async () => {
-        setIsGenerating(true);
-        // Simulate generation delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        const mockData: SKU[] = Array.from({ length: 5 }).map((_, i) => ({
-            id: `sku-gen-${Date.now()}-${i}`,
-            modelName: `Transformer Type-${String.fromCharCode(65 + i)}`,
-            manufacturer: 'VoltTech Industries',
-            unitPrice: 15000 + (Math.random() * 5000),
-            stockQty: Math.floor(Math.random() * 20),
-            minStockThreshold: 3,
-            specs: {
-                'kVA': 100 + (i * 50),
-                'Voltage': '11kV',
-                'Cooling': 'ONAN'
-            }
-        }));
-
-        setSkus(prev => [...mockData, ...prev]);
-        setIsGenerating(false);
-    };
-
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8">
             <div>
@@ -337,17 +312,6 @@ Return ONLY the JSON. Do not include explanations, natural language, tags, or co
                                     <p className="text-xs text-slate-400 mt-1">Supports PDF Datasheets, Excel, CSV</p>
                                 </div>
                             )}
-                        </div>
-
-                        <div className="mt-4 flex items-center gap-2">
-                            <button
-                                onClick={handleGenerateMockData}
-                                disabled={isGenerating}
-                                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg flex items-center justify-center gap-2"
-                            >
-                                {isGenerating ? <Loader2 className="animate-spin" size={14} /> : <Wand2 size={14} />}
-                                Auto-Generate Sample Data
-                            </button>
                         </div>
                     </div>
 

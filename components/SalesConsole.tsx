@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { RFP, RFPStatus, SKU } from '../types';
 import { Search, Globe, Loader2, ArrowRight, Download, Sparkles, Plus, X, Globe2, Database, Briefcase, Building, Factory, BarChart3, AlertCircle, RefreshCw } from 'lucide-react';
@@ -111,6 +110,30 @@ const SalesConsole: React.FC<SalesConsoleProps> = ({ rfps, setRfps, onSelect, sk
     setIsScanning(true);
     setIsError(false);
     setStatusMessage('Initializing Sales Agent...');
+
+    // --- DEMO MODE TRIGGER ---
+    // Instantly generate the perfect PPT scenario if this URL is used
+    if (scanTerm.includes('metro-phase-4') || scanTerm === 'DEMO') {
+        setTimeout(() => {
+            const demoRfp: RFP = {
+                id: `rfp-demo-${Date.now()}`,
+                title: "Metro Phase 4 Power Supply & Traction Electrification System",
+                client: "Metro Rail Corporation",
+                dueDate: "2024-12-25",
+                url: "https://tenders.gov/metro-phase-4",
+                excerpt: "International Competitive Bidding for Design, Supply, Installation, Testing and Commissioning of 11kV/33kV Power Distribution Network, Traction Substations, and Auxiliary Power Supply Systems for Metro Corridor 4.",
+                status: RFPStatus.DISCOVERED,
+                products: [], // Will be populated by Orchestrator
+                tests: [],
+                matchLikelihood: 'High'
+            };
+            setRfps(prev => [demoRfp, ...prev]);
+            setIsScanning(false);
+            setStatusMessage('');
+        }, 1500); // Fake network delay for realism
+        return;
+    }
+    // -------------------------
     
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || 'dummy' });

@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { RFP, AgentRole, LogEntry, RFPStatus, SKUMatch, FinalResponse, SKU } from '../types';
 import { Orchestrator } from '../services/orchestrator';
-import { Play, RotateCcw, FileText, Cpu, Calculator, CheckCircle2, ChevronRight, Activity, Download, Loader2, AlertTriangle, PackageX, Check, Coins, ShieldCheck, Scale, TrendingUp, BarChart3, Info } from 'lucide-react';
+import { Play, RotateCcw, FileText, Cpu, Calculator, CheckCircle2, ChevronRight, Activity, Download, Loader2, AlertTriangle, PackageX, Check, Coins, ShieldCheck, Scale, TrendingUp, BarChart3, Info, Zap, Ruler, Box, ScanEye, ArrowRightLeft, Fingerprint, Magnet, GitMerge, Sparkles } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
 
 interface WorkstationProps {
@@ -24,6 +23,23 @@ const CURRENCY_OPTIONS = [
     { code: 'AUD', symbol: 'A$', name: 'Australian Dollar (A$)' },
     { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar (C$)' },
 ];
+
+const WinGauge = ({ score }: { score: number }) => {
+    const safeScore = typeof score === 'number' ? score : 0;
+    return (
+        <div className="relative w-32 h-32 flex items-center justify-center">
+             <svg className="w-full h-full transform -rotate-90">
+                 <circle cx="64" cy="64" r="28" stroke="#e2e8f0" strokeWidth="6" fill="transparent" />
+                 <circle cx="64" cy="64" r="28" stroke={safeScore > 75 ? "#22c55e" : safeScore > 50 ? "#eab308" : "#ef4444"} strokeWidth="6" fill="transparent" strokeDasharray={`${safeScore * 1.75} 200`} />
+             </svg>
+             <div className="absolute flex flex-col items-center">
+                 <span className="text-2xl font-bold text-slate-700">{Math.round(safeScore)}%</span>
+                 <span className="text-2xl font-bold text-slate-700">{Math.round(safeScore)}%</span>
+                 <span className="text-[10px] text-slate-400 uppercase">Win Prob</span>
+             </div>
+        </div>
+    )
+}
 
 const Workstation: React.FC<WorkstationProps> = ({ rfp, onUpdate, skus }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -85,11 +101,10 @@ const Workstation: React.FC<WorkstationProps> = ({ rfp, onUpdate, skus }) => {
       const [matches, pricingPartial, risk, compliance] = await Promise.all([
         orchestratorRef.current.runTechnicalMatching(updatedRfp.products, skus),
         orchestratorRef.current.runPricing(updatedRfp.products, skus, updatedRfp.tests || [], selectedCurrency),
-        orchestratorRef.current.runRiskAssessment(updatedRfp, skuMatches), // Note: Need matches for risk, but here passing empty initially or re-architect slightly.
+        orchestratorRef.current.runRiskAssessment(updatedRfp, skuMatches), 
         orchestratorRef.current.runComplianceCheck(updatedRfp)
       ]);
 
-      // Note: Re-running risk properly with actual matches if needed, but for parallel demo we simulated.
       // Let's perform a quick Strategy Synthesis
       setActiveAgents([AgentRole.STRATEGY]);
       const strategy = await orchestratorRef.current.runStrategyAnalysis(matches, pricingPartial, risk, compliance);
@@ -202,26 +217,6 @@ const Workstation: React.FC<WorkstationProps> = ({ rfp, onUpdate, skus }) => {
         </div>
     );
   };
-
-  const WinGauge = ({ score }: { score: number }) => {
-      const radius = 40;
-      const stroke = 8;
-      const normalizedScore = Math.min(100, Math.max(0, score));
-      const circumference = normalizedScore * 2 * Math.PI * radius / 100; // Partial arc
-      // Simplified CSS gauge
-      return (
-          <div className="relative w-32 h-32 flex items-center justify-center">
-               <svg className="w-full h-full transform -rotate-90">
-                   <circle cx="64" cy="64" r="28" stroke="#e2e8f0" strokeWidth="6" fill="transparent" />
-                   <circle cx="64" cy="64" r="28" stroke={score > 75 ? "#22c55e" : score > 50 ? "#eab308" : "#ef4444"} strokeWidth="6" fill="transparent" strokeDasharray={`${Number(score) * 1.75} 200`} />
-               </svg>
-               <div className="absolute flex flex-col items-center">
-                   <span className="text-2xl font-bold text-slate-700">{score}%</span>
-                   <span className="text-[10px] text-slate-400 uppercase">Win Prob</span>
-               </div>
-          </div>
-      )
-  }
 
   return (
     <div className="flex h-full flex-col w-full bg-slate-50/50">
@@ -343,26 +338,107 @@ const Workstation: React.FC<WorkstationProps> = ({ rfp, onUpdate, skus }) => {
                 )}
 
                 {activeTab === 'technical' && (
-                    <div className="space-y-4 animate-in slide-in-from-bottom-2">
-                        {skuMatches.map(m => (
-                            <div key={m.itemNo} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-start">
-                                <div className="flex-1">
-                                    <h4 className="font-bold text-slate-800 text-sm">Item {m.itemNo}: {m.matches[0]?.sku.modelName || 'No Match'}</h4>
-                                    <div className="flex flex-wrap gap-2 mt-2">
-                                        {Object.entries(m.matches[0]?.details || {}).map(([k, v]) => (
-                                            <span key={k} className={`text-[10px] px-2 py-1 rounded border ${v === 1 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
-                                                {k}: {Math.round(v * 100)}%
-                                            </span>
-                                        ))}
+                    <div className="space-y-6 animate-in slide-in-from-bottom-2">
+                        {skuMatches.map(m => {
+                            const match = m.matches[0];
+                            const score = match?.matchScore || 0;
+                            const isGood = score > 80;
+                            const isMed = score > 50 && score <= 80;
+
+                            return (
+                                <div key={m.itemNo} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                    {/* Header */}
+                                    <div className="bg-slate-50 p-3 border-b border-slate-200 flex justify-between items-center">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+                                                {m.itemNo.substring(0,2)}
+                                            </div>
+                                            <span className="font-semibold text-slate-700">{m.itemNo} Analysis</span>
+                                        </div>
+                                        <div className={`px-3 py-1 rounded-full text-xs font-bold border ${isGood ? 'bg-green-100 text-green-700 border-green-200' : isMed ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                                            {score.toFixed(0)}% Match Confidence
+                                        </div>
+                                    </div>
+
+                                    {/* The Bridge Visualization */}
+                                    <div className="p-6 grid grid-cols-1 md:grid-cols-7 gap-4 items-center relative">
+                                        
+                                        {/* Left: Requirement */}
+                                        <div className="md:col-span-3 p-4 bg-slate-50 rounded-lg border border-slate-100 relative">
+                                            <div className="absolute -top-3 left-4 bg-slate-200 text-slate-600 px-2 py-0.5 text-[10px] font-bold uppercase rounded">
+                                                RFP Requirement
+                                            </div>
+                                            <div className="flex items-start gap-3 mt-2">
+                                                <ScanEye className="text-slate-400 mt-1" size={20} />
+                                                <div>
+                                                    <p className="font-bold text-slate-800 text-sm">Extracted Specs</p>
+                                                    <div className="space-y-1 mt-2">
+                                                        {Object.entries(m.rfpParams).map(([k, v]) => (
+                                                            <div key={k} className="flex items-center justify-between text-xs text-slate-600 border-b border-slate-200 pb-1 last:border-0 min-w-[140px]">
+                                                                <span className="font-medium mr-4">{k}:</span>
+                                                                <span className="font-mono text-slate-800">{v}</span>
+                                                            </div>
+                                                        ))}
+                                                        {Object.keys(m.rfpParams).length === 0 && <p className="text-xs text-slate-400 italic">No detailed params found.</p>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Middle: The AI Connector */}
+                                        <div className="md:col-span-1 flex flex-col items-center justify-center text-slate-300">
+                                            <div className="h-0.5 w-full bg-slate-200 absolute top-1/2 left-0 right-0 z-0 hidden md:block"></div>
+                                            <div className="w-2 h-2 rounded-full bg-slate-300 relative z-10"></div>
+                                        </div>
+
+                                        {/* Right: SKU Match */}
+                                        <div className="md:col-span-3 p-4 bg-blue-50/50 rounded-lg border border-blue-100 relative">
+                                            <div className="absolute -top-3 right-4 bg-blue-200 text-blue-700 px-2 py-0.5 text-[10px] font-bold uppercase rounded">
+                                                Inventory Match
+                                            </div>
+                                            <div className="flex items-start gap-3 mt-2">
+                                                <Fingerprint className="text-blue-500 mt-1" size={20} />
+                                                <div className="w-full">
+                                                    <p className="font-bold text-slate-800 text-sm">{match?.sku.modelName || 'No Match Found'}</p>
+                                                    
+                                                    {match ? (
+                                                        <div className="space-y-1 mt-2">
+                                                            {/* Show specs on right to match left format for comparison */}
+                                                            {Object.entries(match.sku.specs).slice(0, 4).map(([k, v]) => (
+                                                                <div key={k} className="flex items-center justify-between text-xs text-slate-600 border-b border-blue-200 pb-1 last:border-0">
+                                                                    <span className="font-medium">{k}:</span>
+                                                                    <span className="font-mono text-slate-900">{v}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="p-2 bg-red-50 text-red-600 text-xs rounded">
+                                                            No suitable product found in database.
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                    
+                                    {/* Footer Details */}
+                                    <div className="bg-slate-50 px-6 py-2 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500">
+                                        <div className="flex gap-4">
+                                            <span className="flex items-center gap-1 text-slate-600 font-medium"><Zap size={12} className="text-yellow-500" /> Unit Conversion Active</span>
+                                            <span className="flex items-center gap-1 text-slate-600 font-medium"><Magnet size={12} className="text-purple-500" /> Vector Embeddings</span>
+                                        </div>
+                                        {m.isMTO && <span className="text-amber-600 font-bold flex items-center gap-1"><Box size={12} /> Low Stock (MTO)</span>}
                                     </div>
                                 </div>
-                                <div className="text-right">
-                                    <div className="text-2xl font-bold text-slate-700">{m.matches[0]?.matchScore.toFixed(0)}%</div>
-                                    <div className="text-[10px] text-slate-400 uppercase">Match Score</div>
-                                </div>
-                            </div>
-                        ))}
-                        {skuMatches.length === 0 && <p className="text-slate-400 italic p-4">Waiting for Technical Agent...</p>}
+                            );
+                        })}
+                        {skuMatches.length === 0 && (
+                             <div className="text-center py-12 text-slate-400">
+                                 <Loader2 className="animate-spin mx-auto mb-2" />
+                                 <p>Waiting for Technical Agent to populate matches...</p>
+                             </div>
+                        )}
                     </div>
                 )}
 
