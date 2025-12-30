@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -7,6 +6,10 @@
     <title>BidSmart AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Polyfill for process.env to prevent ReferenceError in browser environments
+      window.process = window.process || { env: { API_KEY: "" } };
+    </script>
     <style>
       body { font-family: 'Inter', sans-serif; }
       /* Custom scrollbar for agent logs */
@@ -27,6 +30,7 @@
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
     "react/": "https://aistudiocdn.com/react@^19.2.1/",
     "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.1",
     "jspdf": "https://aistudiocdn.com/jspdf@^2.5.1",
     "jspdf-autotable": "https://aistudiocdn.com/jspdf-autotable@^3.8.2",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs"
@@ -36,5 +40,7 @@
 </head>
   <body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
+    <!-- Explicitly load the entry point module -->
+    <script type="module" src="index.tsx"></script>
   </body>
 </html>

@@ -425,8 +425,7 @@ const Workstation: React.FC<WorkstationProps> = ({ rfp, onUpdate, skus }) => {
                                     {/* Footer Details */}
                                     <div className="bg-slate-50 px-6 py-2 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500">
                                         <div className="flex gap-4">
-                                            <span className="flex items-center gap-1 text-slate-600 font-medium"><Zap size={12} className="text-yellow-500" /> Unit Conversion Active</span>
-                                            <span className="flex items-center gap-1 text-slate-600 font-medium"><Magnet size={12} className="text-purple-500" /> Vector Embeddings</span>
+                                            {/* Cleaned up as requested */}
                                         </div>
                                         {m.isMTO && <span className="text-amber-600 font-bold flex items-center gap-1"><Box size={12} /> Low Stock (MTO)</span>}
                                     </div>
